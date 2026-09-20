@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>자라다 평촌 주차쿠폰 관리자</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Malgun Gothic", sans-serif;
+    background: #F5F5F5;
+    margin: 0;
+    padding: 24px;
+    color: #1a1a2e;
+  }
+  .container { max-width: 480px; margin: 0 auto; }
+  h1 { font-size: 20px; margin-bottom: 4px; }
+  .subtitle { color: #666; font-size: 13px; margin-bottom: 20px; }
+  .card {
+    background: white;
+    border-radius: 12px;
+    padding: 24px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    margin-bottom: 16px;
+  }
+  label {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 6px;
+    margin-top: 16px;
+    color: #333;
+  }
+  label:first-child { margin-top: 0; }
+  input, textarea {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid #EEEEEE;
+    border-radius: 8px;
+    font-size: 15px;
+    font-family: inherit;
+  }
+  textarea { resize: vertical; min-height: 60px; }
+  button {
+    width: 100%;
+    padding: 13px;
+    background: #2E2A25;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 20px;
+  }
+  button:disabled { background: #aaa; cursor: not-allowed; }
+  button:hover:not(:disabled) { background: #3D372F; }
+  .msg {
+    margin-top: 14px;
+    padding: 12px;
+    border-radius: 8px;
+    font-size: 14px;
+    display: none;
+  }
+  .msg.success { background: #dcfce7; color: #166534; display: block; }
+  .msg.error { background: #fee2e2; color: #991b1b; display: block; }
+  .lock-screen {
+    max-width: 320px;
+    margin: 80px auto;
+    text-align: center;
+  }
+  .lock-screen input { text-align: center; font-size: 18px; letter-spacing: 2px; }
+  .hint { font-size: 12px; color: #999; margin-top: 4px; }
+  .tabs {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 16px;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+  }
+  .tab {
+    flex: 1;
+    min-width: 0;
+    text-align: center;
+    padding: 9px 2px;
+    background: white;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #666;
+    cursor: pointer;
+    border: 1px solid #EEEEEE;
+    white-space: nowrap;
+  }
+  .tab.active {
+    background: #2E2A25;
+    color: white;
+    border-color: #2E2A25;
+  }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  table.parent-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  table.parent-table th, table.parent-table td {
+    text-align: left;
+    padding: 8px 6px;
+    border-bottom: 1px solid #eee;
+    vertical-align: top;
+  }
+  table.parent-table th {
+    color: #666;
+    font-weight: 600;
+    font-size: 12px;
+  }
+  .low-balance { color: #991b1b; font-weight: 700; }
+  .table-wrap { overflow-x: auto; }
+
+  .status-card {
+    background: #2E2A25;
+    color: white;
+    border-radius: 12px;
+    padding: 18px 20px;
+    margin-bottom: 16px;
+  }
+  .status-card .top-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .status-card .num { font-size: 32px; font-weight: 800; line-height: 1; color: #FECD3F; }
+  .status-card .label { font-size: 12px; opacity: 0.85; margin-top: 4px; }
+  .status-card .updated { font-size: 11px; opacity: 0.7; margin-top: 6px; }
+  .status-card .sub-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 16px;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid rgba(255,255,255,0.15);
+  }
+  .status-card .sub-item { font-size: 12px; opacity: 0.85; }
+  .status-card .sub-item b { font-size: 14px; opacity: 1; }
+  .status-card .refresh-btn {
+    background: rgba(255,255,255,0.15);
+    border: none;
+    color: white;
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 12px;
+    cursor: pointer;
+    width: auto;
+    margin: 0;
+  }
+  .status-card .refresh-btn:hover { background: rgba(255,255,255,0.25); }
+</style>
+</head>
+<body>
+
+<div id="lockScreen" class="lock-screen">
+  <h1>🔒 관리자 로그인</h1>
+  <p class="subtitle">공용 비밀번호를 입력하세요</p>
+  <div class="card">
+    <input type="password" id="lockPassword" placeholder="비밀번호">
+    <button onclick="unlock()">입장</button>
+    <div id="lockMsg" class="msg error"></div>
+  </div>
+</div>
+
+<div id="mainScreen" class="container" style="display:none;">
+  <h1>🅿️ 자라다 평촌 주차쿠폰 관리자</h1>
+  <div class="subtitle">아래에서 원하는 작업을 선택하세요</div>
+
+  <div class="status-card">
+    <div class="top-row">
+      <div>
+        <div class="num" id="statusNum">-</div>
+        <div class="label">아이파킹 2시간 할인권 잔여</div>
+        <div class="updated" id="statusUpdated">확인 중...</div>
+      </div>
+      <button class="refresh-btn" onclick="loadStatus()">새로고침</button>
+    </div>
+    <div class="sub-row">
+      <div class="sub-item">1시간 잔여: <b id="statusOneHour">-</b></div>
+      <div class="sub-item">30분 잔여: <b id="statusThirtyMin">-</b></div>
+      <div class="sub-item">평촌주차빌딩 관리사무소: 031-476-0152</div>
+    </div>
+  </div>
+
+  <div class="tabs">
+    <div class="tab active" data-tab="create" onclick="switchTab('create')">ID생성</div>
+    <div class="tab" data-tab="reset" onclick="switchTab('reset')">PW리셋</div>
+    <div class="tab" data-tab="topup" onclick="switchTab('topup')">쿠폰충전</div>
+    <div class="tab" data-tab="deduct" onclick="switchTab('deduct')">쿠폰차감</div>
+    <div class="tab" data-tab="list" onclick="switchTab('list')">ID현황</div>
+    <div class="tab" data-tab="history" onclick="switchTab('history')">이용내역</div>
+    <div class="tab" data-tab="notice" onclick="switchTab('notice')">공지관리</div>
+  </div>
+
+  <!-- 계정 생성 -->
+  <div class="tab-panel active" id="panel-create">
+    <div class="card">
+      <label>이름</label>
+      <input type="text" id="c_name" placeholder="예: 홍길동 학부모님">
+
+      <label>전화번호 (로그인 ID로 사용됨)</label>
+      <input type="text" id="c_phone" placeholder="예: 01012345678 (숫자만)">
+
+      <label>초기 비밀번호 (6자리 이상)</label>
+      <input type="text" id="c_password" placeholder="학부모에게 전달할 초기 비밀번호">
+      <div class="hint">차량번호는 학부모가 로그인 후 직접 등록합니다.</div>
+
+      <label>구매한 쿠폰 개수</label>
+      <input type="number" id="c_initialCoupons" placeholder="예: 10" min="0">
+
+      <label>메모 (선택)</label>
+      <textarea id="c_memo" placeholder="특이사항이 있으면 적어주세요"></textarea>
+
+      <button id="c_btn" onclick="createAccount()">계정 생성</button>
+      <div id="c_msg" class="msg"></div>
+    </div>
+  </div>
+
+  <!-- 쿠폰 충전 -->
+  <div class="tab-panel" id="panel-topup">
+    <div class="card">
+      <label>전화번호</label>
+      <input type="text" id="t_phone" placeholder="예: 01012345678">
+
+      <label>충전할 쿠폰 개수</label>
+      <input type="number" id="t_amount" placeholder="예: 5" min="1">
+
+      <button id="t_btn" onclick="topUp()">충전하기</button>
+      <div id="t_msg" class="msg"></div>
+    </div>
+  </div>
+
+  <!-- 쿠폰 차감 -->
+  <div class="tab-panel" id="panel-deduct">
+    <div class="card">
+      <label>전화번호</label>
+      <input type="text" id="d_phone" placeholder="예: 01012345678">
+
+      <label>차감할 쿠폰 개수</label>
+      <input type="number" id="d_amount" placeholder="예: 1" min="1">
+
+      <label>메모 (선택 — 예: 직원이 직접 처리한 차량번호)</label>
+      <input type="text" id="d_note" placeholder="예: 71하5645 수동 적용">
+
+      <button id="d_btn" onclick="deductCoupon()">차감하기</button>
+      <div id="d_msg" class="msg"></div>
+      <div class="hint">자동화가 실패해서 직원이 아이파킹에서 직접 적용했을 때 사용하세요.</div>
+    </div>
+  </div>
+
+  <!-- 비번 초기화 -->
+  <div class="tab-panel" id="panel-reset">
+    <div class="card">
+      <label>전화번호</label>
+      <input type="text" id="r_phone" placeholder="예: 01012345678">
+
+      <label>새 비밀번호 (6자리 이상)</label>
+      <input type="text" id="r_newPassword" placeholder="새로 설정할 비밀번호">
+
+      <button id="r_btn" onclick="resetPw()">비번 초기화</button>
+      <div id="r_msg" class="msg"></div>
+    </div>
+  </div>
+
+  <!-- 전체 현황 -->
+  <div class="tab-panel" id="panel-list">
+    <div class="card">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+        <div class="section-title" style="margin-bottom:0;">전체 학부모 현황</div>
+        <div style="display:flex; gap:6px;">
+          <button style="width:auto; margin:0; padding:8px 12px; font-size:12px;" onclick="loadAllParents()">새로고침</button>
+          <button style="width:auto; margin:0; padding:8px 12px; font-size:12px; background:#166534;" onclick="downloadCSV()">CSV 백업</button>
+        </div>
+      </div>
+      <div id="listSummary" class="hint" style="margin-bottom:10px;"></div>
+      <div class="table-wrap">
+        <table class="parent-table" id="parentTable">
+          <thead>
+            <tr>
+              <th>이름</th>
+              <th>전화번호</th>
+              <th>잔여쿠폰</th>
+              <th>차량번호</th>
+              <th>메모</th>
+            </tr>
+          </thead>
+          <tbody id="parentTableBody">
+            <tr><td colspan="5" class="empty" style="text-align:center; color:#999; padding:16px 0;">새로고침을 눌러주세요</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div id="list_msg" class="msg"></div>
+    </div>
+  </div>
+
+  <!-- 전체 이용내역 -->
+  <div class="tab-panel" id="panel-history">
+    <div class="card">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+        <div class="section-title" style="margin-bottom:0;">전체 이용내역 (최근 500건)</div>
+        <div style="display:flex; gap:6px;">
+          <button style="width:auto; margin:0; padding:8px 12px; font-size:12px;" onclick="loadAllHistory()">새로고침</button>
+          <button style="width:auto; margin:0; padding:8px 12px; font-size:12px; background:#166534;" onclick="downloadHistoryCSV()">CSV 백업</button>
+        </div>
+      </div>
+      <label style="margin-top:0;">구분 필터</label>
+      <select id="historyFilter" onchange="renderHistoryTable()">
+        <option value="all">전체</option>
+        <option value="최초등록">최초등록만</option>
+        <option value="충전">충전만</option>
+        <option value="적용">적용만</option>
+        <option value="환불(적용실패)">환불만</option>
+        <option value="수동차감">수동차감만</option>
+      </select>
+      <div class="table-wrap" style="margin-top:12px;">
+        <table class="parent-table" id="historyTable">
+          <thead>
+            <tr>
+              <th>일시</th>
+              <th>이름</th>
+              <th>전화번호</th>
+              <th>구분</th>
+              <th>상세</th>
+            </tr>
+          </thead>
+          <tbody id="historyTableBody">
+            <tr><td colspan="5" style="text-align:center; color:#999; padding:16px 0;">새로고침을 눌러주세요</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div id="history_msg" class="msg"></div>
+    </div>
+  </div>
+
+  <!-- 공지사항 관리 -->
+  <div class="tab-panel" id="panel-notice">
+    <div class="card">
+      <div class="section-title">학부모 앱 안내 메시지</div>
+      <div class="hint" style="margin-bottom:10px;">학부모 앱 "잔여 쿠폰" 아래에 표시되는 안내 문구예요. 줄바꿈 단위로 한 줄씩 표시됩니다.</div>
+      <label>안내 내용</label>
+      <textarea id="noticeText" rows="6" placeholder="예)&#10;· 주차권은 자라다 원에서 구매 가능합니다.&#10;· 자라다 등·하원 용 사용 가능합니다.&#10;· 요청 후 3분이 지나도 적용되지 않거나 적용 실패 시 원으로 문의해주세요. 031-387-9992 (원 운영시간 내 응답 가능)"></textarea>
+      <button id="notice_btn" onclick="saveParentNotice()">저장</button>
+      <div id="notice_msg" class="msg"></div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  const BASE_URL = "https://us-central1-jarada-iparking.cloudfunctions.net";
+
+  function unlock() {
+    const pw = document.getElementById("lockPassword").value;
+    if (!pw) return;
+    sessionStorage.setItem("adminPw", pw);
+    document.getElementById("lockScreen").style.display = "none";
+    document.getElementById("mainScreen").style.display = "block";
+    loadStatus();
+  }
+
+  document.addEventListener("DOMContentLoaded", () => {
+    document.getElementById("lockPassword").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") unlock();
+    });
+  });
+
+  function switchTab(tab) {
+    document.querySelectorAll(".tab").forEach(el => el.classList.remove("active"));
+    document.querySelectorAll(".tab-panel").forEach(el => el.classList.remove("active"));
+    document.querySelector(`.tab[data-tab="${tab}"]`).classList.add("active");
+    document.getElementById(`panel-${tab}`).classList.add("active");
+    if (tab === "list") loadAllParents();
+    if (tab === "history") loadAllHistory();
+    if (tab === "notice") loadParentNotice();
+  }
+
+  function showMsg(id, type, text) {
+    const el = document.getElementById(id);
+    el.className = "msg " + type;
+    el.style.display = "block";
+    el.textContent = text;
+  }
+
+  async function callFunction(path, body, btnId, msgId, onSuccessResetIds) {
+    const adminPassword = sessionStorage.getItem("adminPw") || "";
+    const btn = document.getElementById(btnId);
+    const originalText = btn.textContent;
+
+    btn.disabled = true;
+    btn.textContent = "처리 중...";
+    document.getElementById(msgId).style.display = "none";
+
+    try {
+      const res = await fetch(`${BASE_URL}/${path}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ adminPassword, ...body })
+      });
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        showMsg(msgId, "success", "✅ " + data.message);
+        if (onSuccessResetIds) {
+          onSuccessResetIds.forEach(id => document.getElementById(id).value = "");
+        }
+      } else {
+        showMsg(msgId, "error", "❌ " + (data.error || "알 수 없는 오류가 발생했습니다."));
+        if (res.status === 403) {
+          sessionStorage.removeItem("adminPw");
+          setTimeout(() => location.reload(), 1500);
+        }
+      }
+    } catch (err) {
+      showMsg(msgId, "error", "❌ 서버에 연결할 수 없습니다: " + err.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = originalText;
+    }
+  }
+
+  async function loadStatus() {
+    const adminPassword = sessionStorage.getItem("adminPw") || "";
+    document.getElementById("statusUpdated").textContent = "확인 중...";
+
+    try {
+      const res = await fetch(`${BASE_URL}/getIparkingStatus`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ adminPassword })
+      });
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        document.getElementById("statusNum").textContent = data.twoHourRemaining ?? "-";
+        document.getElementById("statusOneHour").textContent = data.oneHourRemaining ?? "-";
+        document.getElementById("statusThirtyMin").textContent = data.thirtyMinRemaining ?? "-";
+        const updated = data.updatedAt ? new Date(data.updatedAt) : null;
+        document.getElementById("statusUpdated").textContent = updated
+          ? "마지막 확인: " + updated.toLocaleString("ko-KR")
+          : "확인 시각 정보 없음";
+      } else {
+        document.getElementById("statusUpdated").textContent = "불러오기 실패: " + (data.error || "");
+      }
+    } catch (err) {
+      document.getElementById("statusUpdated").textContent = "서버 연결 실패";
+    }
+  }
+
+  function createAccount() {
+    const name = document.getElementById("c_name").value.trim();
+    const phone = document.getElementById("c_phone").value.trim();
+    const password = document.getElementById("c_password").value.trim();
+    const memo = document.getElementById("c_memo").value.trim();
+    const initialCoupons = document.getElementById("c_initialCoupons").value;
+
+    if (!name || !phone || !password) {
+      showMsg("c_msg", "error", "이름, 전화번호, 초기비밀번호는 필수입니다.");
+      return;
+    }
+    callFunction("createParentAccount", {name, phone, password, memo, initialCoupons}, "c_btn", "c_msg",
+      ["c_name","c_phone","c_password","c_memo","c_initialCoupons"]);
+  }
+
+  function topUp() {
+    const phone = document.getElementById("t_phone").value.trim();
+    const amount = document.getElementById("t_amount").value;
+
+    if (!phone || !amount) {
+      showMsg("t_msg", "error", "전화번호와 충전 개수를 입력해주세요.");
+      return;
+    }
+    callFunction("topUpCoupon", {phone, amount}, "t_btn", "t_msg", ["t_amount"]);
+  }
+
+  function deductCoupon() {
+    const phone = document.getElementById("d_phone").value.trim();
+    const amount = document.getElementById("d_amount").value;
+    const note = document.getElementById("d_note").value.trim();
+
+    if (!phone || !amount) {
+      showMsg("d_msg", "error", "전화번호와 차감 개수를 입력해주세요.");
+      return;
+    }
+    callFunction("deductCoupon", {phone, amount, note}, "d_btn", "d_msg", ["d_amount", "d_note"]);
+  }
+
+  function resetPw() {
+    const phone = document.getElementById("r_phone").value.trim();
+    const newPassword = document.getElementById("r_newPassword").value.trim();
+
+    if (!phone || !newPassword) {
+      showMsg("r_msg", "error", "전화번호와 새 비밀번호를 입력해주세요.");
+      return;
+    }
+    callFunction("resetPassword", {phone, newPassword}, "r_btn", "r_msg", ["r_phone","r_newPassword"]);
+  }
+
+  let latestParents = [];
+
+  async function loadAllParents() {
+    const adminPassword = sessionStorage.getItem("adminPw") || "";
+    const tbody = document.getElementById("parentTableBody");
+    document.getElementById("listSummary").textContent = "불러오는 중...";
+
+    try {
+      const res = await fetch(`${BASE_URL}/getAllParents`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ adminPassword })
+      });
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        latestParents = data.parents;
+        const totalCoupons = latestParents.reduce((sum, p) => sum + (p.couponBalance || 0), 0);
+        document.getElementById("listSummary").textContent =
+          `총 ${latestParents.length}명 · 전체 잔여쿠폰 합계 ${totalCoupons}개`;
+
+        if (latestParents.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; color:#999; padding:16px 0;">등록된 학부모가 없습니다.</td></tr>';
+          return;
+        }
+
+        tbody.innerHTML = latestParents.map((p) => {
+          const balanceClass = p.couponBalance <= 2 ? "low-balance" : "";
+          const cars = (p.carNumbers && p.carNumbers.length > 0) ? p.carNumbers.join(", ") : "-";
+          return `<tr>
+            <td>${p.name}</td>
+            <td>${p.phone}</td>
+            <td class="${balanceClass}">${p.couponBalance}</td>
+            <td>${cars}</td>
+            <td>${p.memo || "-"}</td>
+          </tr>`;
+        }).join("");
+      } else {
+        document.getElementById("listSummary").textContent = "";
+        showMsg("list_msg", "error", "❌ " + (data.error || "불러오기 실패"));
+      }
+    } catch (err) {
+      document.getElementById("listSummary").textContent = "";
+      showMsg("list_msg", "error", "❌ 서버에 연결할 수 없습니다: " + err.message);
+    }
+  }
+
+  function downloadCSV() {
+    if (latestParents.length === 0) {
+      showMsg("list_msg", "error", "먼저 새로고침으로 목록을 불러와주세요.");
+      return;
+    }
+
+    const headers = ["이름", "전화번호", "잔여쿠폰", "차량번호", "메모", "가입일"];
+    const rows = latestParents.map((p) => [
+      p.name,
+      p.phone,
+      p.couponBalance,
+      (p.carNumbers || []).join(" / "),
+      p.memo || "",
+      p.createdAt ? new Date(p.createdAt).toLocaleDateString("ko-KR") : "",
+    ]);
+
+    const csvContent = [headers, ...rows]
+      .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(","))
+      .join("\r\n");
+
+    // 엑셀에서 한글 깨지지 않도록 BOM 추가
+    const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const today = new Date().toISOString().slice(0, 10);
+    a.href = url;
+    a.download = `자라다_주차쿠폰_백업_${today}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  let latestHistory = [];
+
+  async function loadAllHistory() {
+    const adminPassword = sessionStorage.getItem("adminPw") || "";
+    const tbody = document.getElementById("historyTableBody");
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; color:#999; padding:16px 0;">불러오는 중...</td></tr>';
+
+    try {
+      const res = await fetch(`${BASE_URL}/getAllHistory`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ adminPassword })
+      });
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        latestHistory = data.history;
+        renderHistoryTable();
+      } else {
+        showMsg("history_msg", "error", "❌ " + (data.error || "불러오기 실패"));
+      }
+    } catch (err) {
+      showMsg("history_msg", "error", "❌ 서버에 연결할 수 없습니다: " + err.message);
+    }
+  }
+
+  const historyTypeLabel = {
+    "최초등록": "🆕 최초등록",
+    "충전": "➕ 충전",
+    "적용": "✅ 적용",
+    "환불(적용실패)": "↩️ 환불",
+    "수동차감": "➖ 수동차감",
+  };
+
+  function renderHistoryTable() {
+    const filter = document.getElementById("historyFilter").value;
+    const tbody = document.getElementById("historyTableBody");
+
+    const filtered = filter === "all"
+      ? latestHistory
+      : latestHistory.filter((h) => h.type === filter);
+
+    if (filtered.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; color:#999; padding:16px 0;">기록이 없습니다.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = filtered.map((h) => {
+      const dateStr = h.at ? new Date(h.at).toLocaleString("ko-KR") : "-";
+      const label = historyTypeLabel[h.type] || h.type;
+      let detail = "";
+      if (h.type === "충전" || h.type === "수동차감" || h.type === "최초등록") {
+        detail = `${h.amount ?? ""}개` + (h.note ? ` (${h.note})` : "");
+      } else if (h.type === "적용" || h.type === "환불(적용실패)") {
+        detail = h.carNumber || "-";
+      }
+      return `<tr>
+        <td>${dateStr}</td>
+        <td>${h.name}</td>
+        <td>${h.phone}</td>
+        <td>${label}</td>
+        <td>${detail}</td>
+      </tr>`;
+    }).join("");
+  }
+
+  function downloadHistoryCSV() {
+    if (latestHistory.length === 0) {
+      showMsg("history_msg", "error", "먼저 새로고침으로 목록을 불러와주세요.");
+      return;
+    }
+
+    const headers = ["일시", "이름", "전화번호", "구분", "개수", "차량번호", "메모"];
+    const rows = latestHistory.map((h) => [
+      h.at ? new Date(h.at).toLocaleString("ko-KR") : "",
+      h.name,
+      h.phone,
+      historyTypeLabel[h.type] || h.type,
+      h.amount ?? "",
+      h.carNumber || "",
+      h.note || "",
+    ]);
+
+    const csvContent = [headers, ...rows]
+      .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(","))
+      .join("\r\n");
+
+    const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const today = new Date().toISOString().slice(0, 10);
+    a.href = url;
+    a.download = `자라다_주차쿠폰_이용내역_${today}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function loadParentNotice() {
+    const adminPassword = sessionStorage.getItem("adminPw") || "";
+    try {
+      const res = await fetch(`${BASE_URL}/getParentNotice`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ adminPassword })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        document.getElementById("noticeText").value = data.text || "";
+      } else {
+        showMsg("notice_msg", "error", "❌ " + (data.error || "불러오기 실패"));
+      }
+    } catch (err) {
+      showMsg("notice_msg", "error", "❌ 서버에 연결할 수 없습니다: " + err.message);
+    }
+  }
+
+  function saveParentNotice() {
+    const text = document.getElementById("noticeText").value;
+    callFunction("updateParentNotice", { text }, "notice_btn", "notice_msg", []);
+  }
+</script>
+
+</body>
+</html>
