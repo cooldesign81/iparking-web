@@ -55,6 +55,8 @@
   }
   button:disabled { background: #aaa; cursor: not-allowed; }
   button:hover:not(:disabled) { background: #3D372F; }
+  button.danger { background: #222222; color: #F6DF20; }
+  button.danger:hover:not(:disabled) { background: #000000; }
   .msg {
     margin-top: 14px;
     padding: 12px;
@@ -290,6 +292,7 @@
         </div>
       </div>
       <div id="listSummary" class="hint" style="margin-bottom:10px;"></div>
+      <input type="text" id="parentSearch" placeholder="이름 또는 전화번호로 검색" oninput="renderParentTable()" style="margin-bottom:12px;" />
       <div class="table-wrap">
         <table class="parent-table" id="parentTable">
           <thead>
@@ -299,10 +302,11 @@
               <th>잔여쿠폰</th>
               <th>차량번호</th>
               <th>메모</th>
+              <th></th>
             </tr>
           </thead>
           <tbody id="parentTableBody">
-            <tr><td colspan="5" class="empty" style="text-align:center; color:#999; padding:16px 0;">새로고침을 눌러주세요</td></tr>
+            <tr><td colspan="6" class="empty" style="text-align:center; color:#999; padding:16px 0;">새로고침을 눌러주세요</td></tr>
           </tbody>
         </table>
       </div>
@@ -516,7 +520,6 @@
 
   async function loadAllParents() {
     const adminPassword = sessionStorage.getItem("adminPw") || "";
-    const tbody = document.getElementById("parentTableBody");
     document.getElementById("listSummary").textContent = "불러오는 중...";
 
     try {
@@ -529,32 +532,77 @@
 
       if (res.ok && data.success) {
         latestParents = data.parents;
-        const totalCoupons = latestParents.reduce((sum, p) => sum + (p.couponBalance || 0), 0);
-        document.getElementById("listSummary").textContent =
-          `총 ${latestParents.length}명 · 전체 잔여쿠폰 합계 ${totalCoupons}개`;
-
-        if (latestParents.length === 0) {
-          tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; color:#999; padding:16px 0;">등록된 학부모가 없습니다.</td></tr>';
-          return;
-        }
-
-        tbody.innerHTML = latestParents.map((p) => {
-          const balanceClass = p.couponBalance <= 2 ? "low-balance" : "";
-          const cars = (p.carNumbers && p.carNumbers.length > 0) ? p.carNumbers.join(", ") : "-";
-          return `<tr>
-            <td>${p.name}</td>
-            <td>${p.phone}</td>
-            <td class="${balanceClass}">${p.couponBalance}</td>
-            <td>${cars}</td>
-            <td>${p.memo || "-"}</td>
-          </tr>`;
-        }).join("");
+        renderParentTable();
       } else {
         document.getElementById("listSummary").textContent = "";
         showMsg("list_msg", "error", "❌ " + (data.error || "불러오기 실패"));
       }
     } catch (err) {
       document.getElementById("listSummary").textContent = "";
+      showMsg("list_msg", "error", "❌ 서버에 연결할 수 없습니다: " + err.message);
+    }
+  }
+
+  function renderParentTable() {
+    const tbody = document.getElementById("parentTableBody");
+    const keyword = (document.getElementById("parentSearch").value || "").trim();
+
+    const filtered = keyword
+      ? latestParents.filter((p) =>
+          (p.name || "").includes(keyword) || (p.phone || "").includes(keyword))
+      : latestParents;
+
+    const totalCoupons = latestParents.reduce((sum, p) => sum + (p.couponBalance || 0), 0);
+    document.getElementById("listSummary").textContent = keyword
+      ? `검색결과 ${filtered.length}명 (전체 ${latestParents.length}명)`
+      : `총 ${latestParents.length}명 · 전체 잔여쿠폰 합계 ${totalCoupons}개`;
+
+    if (filtered.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:#999; padding:16px 0;">${keyword ? "검색 결과가 없습니다." : "등록된 학부모가 없습니다."}</td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML = filtered.map((p) => {
+      const balanceClass = p.couponBalance <= 2 ? "low-balance" : "";
+      const cars = (p.carNumbers && p.carNumbers.length > 0) ? p.carNumbers.join(", ") : "-";
+      return `<tr>
+        <td>${p.name}</td>
+        <td>${p.phone}</td>
+        <td class="${balanceClass}">${p.couponBalance}</td>
+        <td>${cars}</td>
+        <td>${p.memo || "-"}</td>
+        <td><button class="danger" style="width:auto; margin:0; padding:5px 10px; font-size:12px;" onclick="deleteParent('${p.phone}', '${(p.name || "").replace(/'/g, "")}')">삭제</button></td>
+      </tr>`;
+    }).join("");
+  }
+
+  async function deleteParent(phone, name) {
+    // 1단계: 되돌릴 수 없는 작업임을 명확히 알림
+    const step1 = confirm(`${name}(${phone}) 계정을 완전히 삭제하시겠습니까?\n\n쿠폰 잔액, 등록 차량, 로그인 정보가 모두 사라지며 되돌릴 수 없습니다.`);
+    if (!step1) return;
+
+    // 2단계: 전화번호를 직접 입력해서 한 번 더 확인
+    const typed = prompt(`정말 삭제하려면 전화번호(${phone})를 정확히 입력해주세요.`);
+    if (typed !== phone) {
+      if (typed !== null) alert("입력한 전화번호가 일치하지 않아 삭제가 취소되었습니다.");
+      return;
+    }
+
+    const adminPassword = sessionStorage.getItem("adminPw") || "";
+    try {
+      const res = await fetch(`${BASE_URL}/deleteParent`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ adminPassword, phone })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showMsg("list_msg", "success", "✅ " + data.message);
+        loadAllParents();
+      } else {
+        showMsg("list_msg", "error", "❌ " + (data.error || "삭제 실패"));
+      }
+    } catch (err) {
       showMsg("list_msg", "error", "❌ 서버에 연결할 수 없습니다: " + err.message);
     }
   }
