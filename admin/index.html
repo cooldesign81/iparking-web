@@ -203,6 +203,7 @@
 
   <div class="tabs">
     <div class="tab active" data-tab="create" onclick="switchTab('create')">ID생성</div>
+    <div class="tab" data-tab="bulk" onclick="switchTab('bulk')">일괄등록</div>
     <div class="tab" data-tab="reset" onclick="switchTab('reset')">PW리셋</div>
     <div class="tab" data-tab="topup" onclick="switchTab('topup')">쿠폰충전</div>
     <div class="tab" data-tab="deduct" onclick="switchTab('deduct')">쿠폰차감</div>
@@ -232,6 +233,49 @@
 
       <button id="c_btn" onclick="createAccount()">계정 생성</button>
       <div id="c_msg" class="msg"></div>
+    </div>
+  </div>
+
+  <!-- 일괄 등록 -->
+  <div class="tab-panel" id="panel-bulk">
+    <div class="card">
+      <label>명단 붙여넣기</label>
+      <div class="hint" style="margin-bottom:6px;">
+        엑셀에서 <b>이름 / 전화번호 / 쿠폰수</b> 열을 복사해 그대로 붙여넣으세요.
+        쿠폰수가 비어 있으면 0으로 처리됩니다. 맨 윗줄이 제목행이면 자동으로 건너뜁니다.
+      </div>
+      <textarea id="b_raw" rows="10" placeholder="홍길동&#9;01012345678&#9;5&#10;김철수&#9;01098765432&#9;3" style="font-family:monospace;"></textarea>
+
+      <label>초기 비밀번호 방식</label>
+      <select id="b_pwMode" onchange="toggleFixedPw()">
+        <option value="phone8">전화번호 뒷 8자리 (예: 01012345678 → 12345678)</option>
+        <option value="fixed">전원 동일하게 지정</option>
+      </select>
+      <div id="b_fixedWrap" style="display:none;">
+        <label>공통 초기 비밀번호 (6자리 이상)</label>
+        <input type="text" id="b_fixedPw" placeholder="예: jarada1234">
+      </div>
+
+      <button id="b_previewBtn" onclick="bulkPreview()">미리보기</button>
+      <div id="b_msg" class="msg"></div>
+
+      <div id="b_previewWrap" style="display:none; margin-top:16px;">
+        <div class="table-wrap">
+          <table id="b_table">
+            <thead>
+              <tr><th>#</th><th>이름</th><th>전화번호(ID)</th><th>쿠폰</th><th>초기 비밀번호</th><th>상태</th></tr>
+            </thead>
+            <tbody id="b_tbody"></tbody>
+          </table>
+        </div>
+
+        <div class="hint" style="margin-top:10px;">
+          <b>확인 후 실행하세요.</b> 이미 등록된 전화번호는 건너뜁니다.
+          실행 중에는 창을 닫지 마세요.
+        </div>
+        <button id="b_runBtn" onclick="bulkRun()">위 명단으로 계정 생성 실행</button>
+        <div id="b_progress" class="hint" style="margin-top:10px;"></div>
+      </div>
     </div>
   </div>
 
@@ -437,6 +481,162 @@
       btn.disabled = false;
       btn.textContent = originalText;
     }
+  }
+
+  // ===== 일괄 등록 =====
+  let bulkRows = [];
+
+  function toggleFixedPw() {
+    const mode = document.getElementById("b_pwMode").value;
+    document.getElementById("b_fixedWrap").style.display = (mode === "fixed") ? "block" : "none";
+  }
+
+  function makePassword(phone) {
+    const mode = document.getElementById("b_pwMode").value;
+    if (mode === "fixed") return (document.getElementById("b_fixedPw").value || "").trim();
+    return phone.slice(-8);
+  }
+
+  function bulkPreview() {
+    const raw = document.getElementById("b_raw").value;
+    document.getElementById("b_previewWrap").style.display = "none";
+    document.getElementById("b_progress").textContent = "";
+
+    if (!raw.trim()) {
+      showMsg("b_msg", "error", "❌ 명단을 붙여넣어 주세요.");
+      return;
+    }
+
+    const mode = document.getElementById("b_pwMode").value;
+    if (mode === "fixed") {
+      const fp = (document.getElementById("b_fixedPw").value || "").trim();
+      if (fp.length < 6) {
+        showMsg("b_msg", "error", "❌ 공통 비밀번호는 6자리 이상이어야 합니다.");
+        return;
+      }
+    }
+
+    const lines = raw.split("\n").map(l => l.trim()).filter(l => l.length > 0);
+    const seen = {};
+    bulkRows = [];
+
+    lines.forEach((line, idx) => {
+      const cols = line.split(/\t|,|\s{2,}/).map(c => c.trim()).filter(c => c.length > 0);
+
+      // 제목행 건너뛰기
+      if (idx === 0 && (line.indexOf("이름") >= 0 || line.indexOf("아이디") >= 0)) return;
+      if (cols.length < 2) {
+        bulkRows.push({ name: cols[0] || line, phone: "", coupons: 0, password: "", status: "형식오류", ok: false });
+        return;
+      }
+
+      const name = cols[0];
+      const phone = cols[1].replace(/[^0-9]/g, "");
+      const couponRaw = cols.length >= 3 ? cols[2].replace(/[^0-9]/g, "") : "";
+      const coupons = couponRaw === "" ? 0 : parseInt(couponRaw, 10);
+      const password = makePassword(phone);
+
+      let status = "대기", ok = true;
+      if (phone.length < 10 || phone.length > 11) { status = "전화번호 오류"; ok = false; }
+      else if (seen[phone]) { status = "명단 내 중복"; ok = false; }
+      else if (password.length < 6) { status = "비밀번호 짧음"; ok = false; }
+
+      if (ok) seen[phone] = true;
+      bulkRows.push({ name, phone, coupons, password, status, ok });
+    });
+
+    if (bulkRows.length === 0) {
+      showMsg("b_msg", "error", "❌ 읽어들인 줄이 없습니다. 형식을 확인해주세요.");
+      return;
+    }
+
+    renderBulkTable();
+    const okCount = bulkRows.filter(r => r.ok).length;
+    const ngCount = bulkRows.length - okCount;
+    showMsg("b_msg", ngCount > 0 ? "error" : "success",
+      `총 ${bulkRows.length}명 중 생성 가능 ${okCount}명` + (ngCount > 0 ? ` / 문제 있음 ${ngCount}명 (아래 표의 빨간 줄 확인)` : ""));
+    document.getElementById("b_previewWrap").style.display = "block";
+  }
+
+  function renderBulkTable() {
+    const tbody = document.getElementById("b_tbody");
+    tbody.innerHTML = "";
+    bulkRows.forEach((r, i) => {
+      const tr = document.createElement("tr");
+      if (!r.ok) tr.style.background = "#fff0f0";
+      tr.innerHTML =
+        "<td>" + (i + 1) + "</td>" +
+        "<td>" + r.name + "</td>" +
+        "<td>" + r.phone + "</td>" +
+        "<td>" + r.coupons + "</td>" +
+        "<td>" + r.password + "</td>" +
+        "<td id='b_st_" + i + "'>" + r.status + "</td>";
+      tbody.appendChild(tr);
+    });
+  }
+
+  async function bulkRun() {
+    const targets = bulkRows.filter(r => r.ok);
+    if (targets.length === 0) {
+      showMsg("b_msg", "error", "❌ 생성할 수 있는 대상이 없습니다.");
+      return;
+    }
+    if (!confirm(targets.length + "명의 계정을 생성합니다. 진행할까요?")) return;
+
+    const adminPassword = sessionStorage.getItem("adminPw") || "";
+    const btn = document.getElementById("b_runBtn");
+    const prevBtn = document.getElementById("b_previewBtn");
+    btn.disabled = true; prevBtn.disabled = true;
+
+    let done = 0, fail = 0;
+
+    for (let i = 0; i < bulkRows.length; i++) {
+      const r = bulkRows[i];
+      if (!r.ok) continue;
+
+      const cell = document.getElementById("b_st_" + i);
+      cell.textContent = "생성 중...";
+
+      try {
+        const res = await fetch(`${BASE_URL}/createParentAccount`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            adminPassword,
+            name: r.name,
+            phone: r.phone,
+            password: r.password,
+            memo: "",
+            initialCoupons: r.coupons
+          })
+        });
+        const data = await res.json();
+
+        if (res.ok && data.success) {
+          cell.textContent = "✅ 완료";
+          done++;
+        } else {
+          cell.textContent = "❌ " + (data.error || "실패");
+          fail++;
+          if (res.status === 403) {
+            showMsg("b_msg", "error", "❌ 관리자 비밀번호 오류로 중단했습니다.");
+            break;
+          }
+        }
+      } catch (err) {
+        cell.textContent = "❌ 통신오류";
+        fail++;
+      }
+
+      document.getElementById("b_progress").textContent =
+        `진행 ${done + fail} / ${targets.length}  (성공 ${done}, 실패 ${fail})`;
+
+      await new Promise(resolve => setTimeout(resolve, 400));
+    }
+
+    btn.disabled = false; prevBtn.disabled = false;
+    showMsg("b_msg", fail > 0 ? "error" : "success",
+      `완료: 성공 ${done}명, 실패 ${fail}명. 실패 건은 표의 상태를 확인하세요.`);
   }
 
   async function loadStatus() {
