@@ -169,14 +169,23 @@
     margin: 0;
   }
   .status-card .refresh-btn:hover { background: rgba(255,255,255,0.25); }
+  .g-btn { width:100%; margin-bottom:10px; }
+  .or { display:flex; align-items:center; gap:8px; font-size:12px; color:#888; margin:6px 0 10px; }
+  .or::before, .or::after { content:""; flex:1; border-top:1px solid #e5e5e5; }
+  .who { font-size:12px; color:#666; text-align:center; margin:-6px 0 12px; }
+  .who button { width:auto; padding:2px 8px; font-size:12px; margin-left:6px; background:#fff; color:#333; border:1px solid #ddd; }
 </style>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
 </head>
 <body>
 
 <div id="lockScreen" class="lock-screen">
   <h1>🔒 관리자 로그인</h1>
-  <p class="subtitle">공용 비밀번호를 입력하세요</p>
+  <p class="subtitle">JP ONE 직원 계정(구글)이나 공용 비밀번호로 들어와요</p>
   <div class="card">
+    <button class="g-btn" type="button" onclick="googleLogin()">구글로 로그인</button>
+    <div class="or">공용 비밀번호</div>
     <input type="password" id="lockPassword" placeholder="비밀번호">
     <button onclick="unlock()">입장</button>
     <div id="lockMsg" class="msg error"></div>
@@ -186,6 +195,7 @@
 <div id="mainScreen" class="container" style="display:none;">
   <h1>🅿️ 자라다 평촌 주차쿠폰 관리자</h1>
   <div class="subtitle">아래에서 원하는 작업을 선택하세요</div>
+  <div class="who" id="whoBox" style="display:none;"></div>
 
   <div class="status-card">
     <div class="top-row">
@@ -416,6 +426,45 @@
 <script>
   const BASE_URL = "https://us-central1-jarada-iparking.cloudfunctions.net";
 
+  // 구글 로그인 (jarada-iparking). 학부모 화면과 로그인이 섞이지 않게 이름 붙인 앱을 따로 씀.
+  // 서버 함수가 ID 토큰을 보고 대표 또는 JP ONE 출입 명단(jpAccess)에 있는 사람인지 확인함
+  const gApp = firebase.initializeApp({
+    apiKey: "AIzaSyCuOIyucJQnhwfbZXamcTCII7aa0fxyOzU",
+    authDomain: "jarada-iparking.firebaseapp.com",
+    projectId: "jarada-iparking",
+    appId: "1:419835605389:web:29ab45962b538277fdcdc4"
+  }, "admin");
+  const gAuth = gApp.auth();
+  async function authHeaders() {
+    const h = { "Content-Type": "application/json" };
+    const u = gAuth.currentUser;
+    if (u) h.Authorization = "Bearer " + await u.getIdToken();
+    return h;
+  }
+  async function googleLogin() {
+    try { await gAuth.signInWithPopup(new firebase.auth.GoogleAuthProvider()); }
+    catch (e) { if (e.code !== "auth/popup-closed-by-user") showMsg("lockMsg", "error", "구글 로그인에 실패했어요."); }
+  }
+  async function googleLogout() { await gAuth.signOut(); location.reload(); }
+  gAuth.onAuthStateChanged(async (u) => {
+    if (!u) return;
+    // 들어올 수 있는지 서버에 한 번 확인
+    try {
+      const res = await fetch(`${BASE_URL}/getIparkingStatus`, { method: "POST", headers: await authHeaders(), body: JSON.stringify({}) });
+      if (res.status === 403) {
+        const em = u.email; await gAuth.signOut();
+        showMsg("lockMsg", "error", `${em} 계정은 주차 쿠폰 관리 명단에 없어요. JP ONE 관리자에게 등록을 요청하거나 공용 비밀번호로 들어와 주세요.`);
+        return;
+      }
+    } catch (e) { /* 연결 실패는 아래 화면에서 다시 보여 줌 */ }
+    sessionStorage.removeItem("adminPw");
+    document.getElementById("whoBox").style.display = "block";
+    document.getElementById("whoBox").innerHTML = `${u.email.replace(/[<>&"]/g, "")} 로그인 중<button type="button" onclick="googleLogout()">로그아웃</button>`;
+    document.getElementById("lockScreen").style.display = "none";
+    document.getElementById("mainScreen").style.display = "block";
+    loadStatus();
+  });
+
   function unlock() {
     const pw = document.getElementById("lockPassword").value;
     if (!pw) return;
@@ -460,7 +509,7 @@
     try {
       const res = await fetch(`${BASE_URL}/${path}`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: await authHeaders(),
         body: JSON.stringify({ adminPassword, ...body })
       });
       const data = await res.json();
@@ -602,7 +651,7 @@
       try {
         const res = await fetch(`${BASE_URL}/createParentAccount`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: await authHeaders(),
           body: JSON.stringify({
             adminPassword,
             name: r.name,
@@ -648,7 +697,7 @@
     try {
       const res = await fetch(`${BASE_URL}/getIparkingStatus`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: await authHeaders(),
         body: JSON.stringify({ adminPassword })
       });
       const data = await res.json();
@@ -727,7 +776,7 @@
     try {
       const res = await fetch(`${BASE_URL}/getAllParents`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: await authHeaders(),
         body: JSON.stringify({ adminPassword })
       });
       const data = await res.json();
@@ -794,7 +843,7 @@
     try {
       const res = await fetch(`${BASE_URL}/deleteParent`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: await authHeaders(),
         body: JSON.stringify({ adminPassword, phone })
       });
       const data = await res.json();
@@ -850,7 +899,7 @@
     try {
       const res = await fetch(`${BASE_URL}/getAllHistory`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: await authHeaders(),
         body: JSON.stringify({ adminPassword })
       });
       const data = await res.json();
@@ -942,7 +991,7 @@
     try {
       const res = await fetch(`${BASE_URL}/getParentNotice`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: await authHeaders(),
         body: JSON.stringify({ adminPassword })
       });
       const data = await res.json();
